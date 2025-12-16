@@ -1,0 +1,398 @@
+---
+title: "Divvy Bikes Analysis"
+author: "Peter Mouw"
+date: "2025-12-01"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Business Task
+
+This project analyzes public operational data for **Divvy**, a bike-share company in Chicago. The objective is to identify actionable insights that help convert casual riders into annual members. The analysis addresses the following business questions:
+
+**1. How do annual members and casual riders use Cyclistic bikes differently?**
+**2. Why would casual riders buy Cyclistic annual memberships?**
+**3. How can Cyclistic use digital media to influence casual riders to become members?**
+
+These questions align directly with Cyclistic’s marketing goal of increasing annual memberships.
+
+
+## Data Sources
+
+This study uses Q1 trip data from 2019 and 2020. The datasets differ slightly in structure and available variables. These differences are accounted for during data preparation and analysis.
+
+**2019 data**: Includes demographic information (gender, birth year)
+**2020 data**: Includes geographic coordinates for distance calculation
+
+
+## Data Preparation
+
+The data preparation process includes loading required packages, cleaning each dataset individually, and then combining them into a single analytical table where appropriate.
+
+
+### Import Packages and Files
+```{r}
+library('tidyverse')
+library('lubridate')
+trips_2019 <- read_csv("Divvy_Trips_2019_final.csv")
+trips_2020 <- read_csv("Divvy_Trips_2020_Q1_final.csv")
+```
+
+### Process Q1 2019 Data
+```{r}
+trips_2019 <- trips_2019 %>%
+  #remove potential duplicates
+  distinct(trip_id, .keep_all = TRUE)%>%
+  #remove columns with blanks/errors
+  mutate(across(where(is.character), ~na_if(.x, ""))) %>%
+  drop_na() %>%
+  #remove unnecessary columns
+  select(-trip_id, -bikeid, -to_station_id, -gender, -birthyear, -from_station_name, -from_station_id, -to_station_name)%>%
+  #update column terms
+  rename(user_type=usertype,
+         trip_duration=tripduration)%>%
+  #update column types
+  mutate(
+    start_time = ymd_hms(start_time),
+    end_time = ymd_hms(end_time))
+```
+
+### Process Q1 2020 Data
+```{r}
+#Transform columns and data, add time elapsed column
+trips_2020 <- trips_2020 %>%
+  #remove potential duplicates
+  distinct(ride_id, .keep_all = TRUE)%>%
+  #remove columns with blanks/errors
+  mutate(across(where(is.character), ~na_if(.x, ""))) %>%
+  drop_na()%>%
+  #remove unnecessary column
+  select(-ride_id, -rideable_type, -start_station_name, -start_station_id, -end_station_name, -end_station_id, -rideable_type, -start_lat, -start_lng, -end_lat, -end_lng)%>%
+  #update terms for column header and content
+  mutate(member_casual = recode(member_casual,
+                                "member"="Subscriber",
+                                "casual"="Customer"))%>%
+  rename(start_time=started_at,
+         end_time=ended_at,
+         user_type=member_casual)%>%
+ #Calculate and add trip_duration column
+   mutate(
+     start_time = ymd_hms(start_time),
+     end_time = ymd_hms(end_time),
+     trip_duration = difftime(end_time, start_time, units = "secs"),
+     trip_duration = as.numeric(trip_duration))
+```
+
+### Join and arrange the datasets
+```{r}
+trips_all <- bind_rows(trips_2019, trips_2020)
+trips_all <- trips_all %>%
+  arrange(start_time)
+rm(trips_2019)
+rm(trips_2020)
+```
+
+
+### Distance Analysis (2020 Only)
+
+Geographic coordinates are only available in the 2020 dataset. These are used to estimate trip distance in miles.
+
+```{r} 
+#create and process table
+trip_distance_2020 <- read_csv("Divvy_Trips_2020_Q1_final.csv")
+trip_distance_2020 <- trip_distance_2020 %>%
+  #remove potential duplicates
+  distinct(ride_id, .keep_all = TRUE)%>%
+  #remove columns with blanks/errors
+  mutate(across(where(is.character), ~na_if(.x, ""))) %>%
+  drop_na() %>%
+  #remove unnecessary columns
+  select(-ride_id, -rideable_type, -started_at, -ended_at, -start_station_name, -start_station_id, -end_station_name, -end_station_id)%>%
+  mutate(member_casual = recode(member_casual,
+                                "member"="Subscriber",
+                                "casual"="Customer"))
+#add distance, age
+trip_distance_2020 <- trip_distance_2020 %>%
+  mutate(
+    # Average latitude in radians for longitude scaling
+    avg_lat_rad = ((start_lat + end_lat) / 2) * pi / 180,
+    # Differences in miles
+    delta_lat = (end_lat - start_lat) * 69,
+    delta_lon = (end_lng - start_lng) * 69 * cos(avg_lat_rad),
+    # Approximate distance in miles
+    distance_miles = sqrt(delta_lat^2 + delta_lon^2)) %>%
+    #remove intermediate columns
+    select(-avg_lat_rad, -delta_lat, -delta_lon, -start_lat, -start_lng, -end_lat, -end_lng)%>%
+    #arrange table by customer type
+    arrange(member_casual)%>%
+    #rename subscriber/customer column
+    rename(user_type = member_casual)
+```
+
+### Demographic Analysis (2019 Only)
+
+Demographic information is available only in the 2019 dataset. This subset is used to analyze gender and age distributions.
+
+```{r}
+#create table
+user_demographics_2019 <- read_csv("Divvy_Trips_2019_final.csv")
+user_demographics_2019 <- user_demographics_2019 %>%
+  #remove potential duplicates
+  distinct(trip_id, .keep_all = TRUE)%>%
+  #remove columns with blanks/errors
+  mutate(across(where(is.character), ~na_if(.x, ""))) %>%
+  drop_na(birthyear, gender) %>%
+  #Add "age" column and arrange the chart by it
+  mutate(age = 2019 - birthyear)%>%
+  arrange(age)%>%
+  #filter table by age (18-100)
+  filter(age >= 18 & age <= 100)%>%
+  #add column assinging ages to broader age groups
+  mutate(age_group = case_when(
+    age >= 18 & age <= 24 ~ "18-24",
+    age >= 25 & age <= 34 ~ "25-34",
+    age >= 35 & age <= 44 ~ "35-44",
+    age >= 45 & age <= 54 ~ "45-54",
+    age >= 55 & age <= 64 ~ "55-64",
+    age >= 65 ~ "65+",
+    TRUE ~ NA_character_)) %>%
+  #remove unnecessary columns
+  select(-birthyear, -trip_id, -start_time, -end_time, -bikeid, -to_station_id, -from_station_name, -from_station_id, -to_station_name)
+```
+First we look to how subscribers and non-subscribers (or "customers) tend to use the service differently. A good first place to start is trip duration, referencing both 2019 and 2020 data: do subscribers or customers tend to cycle longer?
+
+The answer below, perhaps surprisingly, is is that non-subscribers tend to have longer individual rides than subscribers.
+
+
+## Analysis and Visualization
+
+### Trip Duration by Subscription Status
+
+```{r}
+#calculate average trip duration by subscription status (2019-2020)
+avg_trip_duration <- trips_all%>%
+  group_by(user_type)%>%
+  summarize(avg_duration = mean(trip_duration))
+#create the bar chart
+ggplot(avg_trip_duration, aes(x = user_type, y = avg_duration)) +
+  geom_bar(stat = "identity", fill = "steelblue", width = 0.5) +
+  labs(title = "Average Trip Duration by Subscription Status (2019-2020)",
+       x = "Subscription Status",
+       y = "Average Trip Duration (seconds)") +
+  ylim(0, max(avg_trip_duration$avg_duration) * 1.2) +
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Still, an important second metric is at play as well: distance.
+
+As we see from the Q1 2020 data, subscribers tend to cycle a similar distance as the customers with a significantly smaller average duration. Subscribers seem to travel faster (or with fewer detours) between their start and end destinations.
+
+### Trip Distance by Subscription Status (2020)
+```{r}
+#calculate and display distance traveled by subscription status (2020)
+avg_trip_distance <- trip_distance_2020%>%
+  group_by(user_type)%>%
+  summarize(avg_distance = mean(distance_miles))
+#create the bar chart
+ggplot(avg_trip_distance, aes(x = user_type, y = avg_distance)) +
+  geom_bar(stat = "identity", fill = "steelblue", width = 0.5) +
+  labs(title = "Average Trip Distance by Subscription Status (2020)",
+       x = "Subscription Status",
+       y = "Average Trip Distance (Miles)") +
+  ylim(0, max(avg_trip_distance$avg_distance) * 1.2) +
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Thus, trip duration is generally less correlated with subscriber status than distance traveled, but neither are correlated strongly with an individual's decision to subscribe to the service.
+
+Still, there is a third metric that we can look into: how **often** subscribers vs. non-subscribers use the service.
+
+### Ride Frequency by Subscription Status
+```{r}
+#calculate number of trips by user type
+total_num_trips <- trips_all%>%
+  group_by(user_type)%>%
+  summarize(num_rides = n())
+#divide by days 
+#create the bar chart
+ggplot(total_num_trips, aes(x = user_type, y = num_rides)) +
+  geom_bar(stat = "identity", fill = "steelblue", width = 0.5) +
+  labs(title = "Number of Total Rides by Subscriber Status (2019-2020)",
+       x = "Subscriber Status",
+       y = "Number of Rides") +
+  ylim(0, max(total_num_trips$num_rides) * 1.2) +
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+In terms of the sheer number of rides, subscribers vastly outstrip one-off customers. While it is important not to make a judgement on this point alone (it makes sense intuitively that those who subscribe to a service use it more), but when we look at *when* subscribers travel things become more clear.
+
+### Usage Patterns by Hour of Day
+```{r}
+#calculate rides for each hour in 24hr cycle grouped by user_type
+trips <- trips_all %>%
+  mutate(start_time = ymd_hms(start_time),
+         hour_of_day = hour(start_time))
+rides_per_hour <- trips %>%
+  group_by(hour_of_day, user_type) %>%
+  summarize(
+    avg_rides = n() / n_distinct(date(start_time)),
+    .groups = "drop")
+#plot on a line graph
+ggplot(rides_per_hour, aes(x = hour_of_day, y = avg_rides, color = user_type)) +
+  geom_line(linewidth = 1.2) +
+  labs(title = "Average Number of Rides by Hour of Day",
+       x = "Hour of Day",
+       y = "Average Number of Rides",
+       color = "User Type") +
+  scale_x_continuous(breaks = 0:23) +
+  scale_color_manual(values = c("Subscriber" = "steelblue",
+                                "Customer" = "orangered")) +  # custom colors
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Subscribers use the bicycles in regular patters. There are two big spikes in at the start and end of the work day and one small bump for lunch. One-off customers, however, average a relatively steady arc throughout the day. We can conclude several things from this and the data so-far. 
+
+**First, it is very likely that the majority of subscribers are professionals.** They have a duration to distance ratio that indicates they are using the bicycles for travel, rather than tourism. They do go about as far as the regular customers in significantly less time. Likewise, subscribers' use averages out on the traditional work schedule, with peaks at 8am and 5pm.
+
+**Second, we can also determine that number of uses is the metric most strongly correlated with subscribers.** Subscribers are outstripped by customers in ride duration and distance, but there is significant correlation between those who subscribe and those who use the service regularly. Because there is no "customer ID" available in this data, we cannot tell if it causes or is caused by subscription, but the relation is clear.
+
+
+**This answers the first and second questions posed:**
+
+*1. How do annual members and casual riders use Divvy bikes differently?*
+
+Divvy subscribers use the service more often, with faster or more direct routes, largely for the purpose of transportation, and dominantly follow a 8am-5pm work schedule. Casual riders, however, tend to take slower rides (likely for the purpose of sightseeing or leisure), and their average use does not follow a work schedule.
+
+*2. Why would casual riders buy Divvy annual memberships?*
+
+There are a few reasons a casual rider might purchase a membership. 
+(1) The determining factor as to who does and does not purchase a subscription depends on how often the service is used. Those casual riders that ride often would be prime candidates to become Divvy members.
+(2) As noted in the previous question, Divvy members tend to be professionals, commuting to work. Casual riders who have bikeable commutes, or otherwise live in an area where using Divvy is practical for transportation are also good candidates to become members. In other words, those who use Divvy for regular transportation rather than leisure are more likely to buy a subscription.
+
+**The last question remains:**
+
+*3. How can Divvy use digital media to influence casual riders to become members?*
+
+Digital advertising allows companies like Divvy to target certain demographics in their marketing campaigns. We have seen that local professionals are a target demographic, but further work can be done to target the groups to which Divvy most appeals.
+
+To do this, we'll look at the demographics for current subscribers. Demographic information is only included in the 2019 data, so we'll look there first and investigate gender statistics.
+
+First, we'll investigate the relationship between gender and subscription status.
+
+### Calculate and display the number of subscribers by gender in Q1 2019
+```{r}
+# Calculate number of subscribers by gender (in thousands)
+total_num_subs <- user_demographics_2019 %>%
+  filter(usertype == "Subscriber") %>%
+  group_by(gender) %>%
+  summarize(num_subs = n()) %>%
+  mutate(num_subs = num_subs / 1000)
+
+# Create the pie chart
+ggplot(total_num_subs, aes(x = "", y = num_subs, fill = gender)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  labs(title = "Number of Subscribers by Gender (Q1 2019)",
+       fill = "Gender") +
+  theme_minimal() +
+  theme(axis.title = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+```
+
+
+###Calculate and display number of users by gender
+```{r}
+# Calculate number of trips by gender (in thousands)
+total_num_users <- user_demographics_2019 %>%
+  group_by(gender) %>%
+  summarize(num_users = n()) %>%
+  mutate(num_users = num_users / 1000)
+
+# Create the pie chart
+ggplot(total_num_users, aes(x = "", y = num_users, fill = gender)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  labs(title = "Number of Trips by Rider's Gender (Q1 2019)",
+       fill = "Gender") +
+  theme_minimal() +
+  theme(axis.title = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+```
+
+Men are statistically 326% more likely than women to be subscribers and 315% more likely than women to use the service at all.This tells us that men are the primary demographic for Divvy bicycles.
+
+Still, there is more to learn about the average *age* of subscribers and users.
+
+###Subscriber frequency by age group
+```{r}
+#calculate number of trips by age group
+total_num_subs <- user_demographics_2019%>%
+  filter(usertype == "Subscriber") %>%
+  group_by(age_group)%>%
+  summarize(num_subs = n())
+#create the bar chart
+ggplot(total_num_subs, aes(x = age_group, y = num_subs)) +
+  geom_bar(stat = "identity", fill = "steelblue", width = 0.5) +
+  labs(title = "Number of Rides by Age Group (2019)",
+       x = "Age",
+       y = "Number of Subscribers") +
+  ylim(0, max(total_num_subs$num_subs) * 1.2) +
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+###Ride frequency by age group
+```{r}
+#calculate number of trips by age group
+total_num_trips <- user_demographics_2019%>%
+  group_by(age_group)%>%
+  summarize(num_rides = n())
+#create the bar chart
+ggplot(total_num_trips, aes(x = age_group, y = num_rides)) +
+  geom_bar(stat = "identity", fill = "steelblue", width = 0.5) +
+  labs(title = "Number of Rides by Age Group (2019)",
+       x = "Age",
+       y = "Number of Rides") +
+  ylim(0, max(total_num_trips$num_rides) * 1.2) +
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+The 25-34 age group is most likely to subscribe to and use the bikes, with the 35-44 group a distant second. They are 45.42% and 24.83% of subscribers and 45.5% and 24.6% of the total users respectively.
+
+To answer the third question, then, Divvy would be most effective in directing digital media to people who are (1) employed near Divvy bicycle stations and can use the service for transportation, (2) are men, (3) are between the ages of 25 and 44 (but especially 25-34).
+
+
+## Conclusion
+
+### Key Insights
+
+* Subscribers use Divvy far more frequently than casual riders.
+* Casual riders take longer trips, but subscribers complete similar distances in less time.
+* Subscriber usage follows a standard workday pattern, with peaks around 8 AM and 5 PM.
+* The strongest indicator of membership is frequency of use, not trip length or distance.
+
+### Recommendations (Act Phase)
+
+To increase annual memberships, Divvy should:
+
+* Target **frequent casual riders** with membership offers
+* Focus digital advertising near **employment centers and transit corridors**
+* Prioritize messaging toward **men aged 25–44**, while maintaining inclusive outreach to other demographics
+* Emphasize **cost savings and convenience** for regular commuters
+
+### Final Remarks
+
+Based on usage patterns and demographic trends, Divvy’s most effective growth strategy is to convert high-frequency casual riders into annual members. Digital media campaigns should emphasize the benefits of membership for daily transportation while remaining inclusive of less-represented user groups. It would be most effective primarily to target the demographic of males 25-44, while not excluding females or other age groups that still make up a sizable minority of users.
