@@ -3,18 +3,18 @@ Published report:
 
 https://peter-mouw.github.io/Divvy_Bikes_Analysis_2019-2020/
  
-Overview:
+Overview - 
 
 This project analyzes publicly available Divvy Bikes trip data from Q1 2019 and Q1 2020. The goal is to compare usage patterns between casual riders and annual members and identify factors associated with subscription behavior.
 The project was completed as a practice case study for the Google Data Analytics Professional Certificate.
 
-Business Questions:
+Business Questions - 
 The analysis addresses the following questions:
 1. How do annual members and casual riders use Divvy bikes differently?
 2. What factors are associated with casual riders becoming subscribers?
 3. How might digital marketing be used to encourage membership adoption?
 
-Data Sources:
+Data Sources - 
 The analysis uses Divvy’s public trip datasets:
 - Q1 2019 - Includes rider demographics (gender, birth year)
 - Q1 2020 - Includes geographic coordinates for distance estimation
