@@ -1,6 +1,6 @@
 Divvy Bikes Analysis (2019–2020)
 Published report:
- https://peter-mouw.github.io/Divvy-Bikes-Analysis-2019-2020-/
+ [https://peter-mouw.github.io/Divvy-Bikes-Analysis-2019-2020-/](https://github.com/Peter-Mouw/Divvy_Bikes_Analysis_2019-2020/settings/pages)
  
 Overview
 This project analyzes publicly available Divvy Bikes trip data from Q1 2019 and Q1 2020. The goal is to compare usage patterns between casual riders and annual members and identify factors associated with subscription behavior.
