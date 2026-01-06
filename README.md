@@ -3,7 +3,7 @@ Published report:
 
 https://peter-mouw.github.io/Divvy_Bikes_Analysis_2019-2020/
  
-Overview - 
+Overview:
 
 This project analyzes publicly available Divvy Bikes trip data from Q1 2019 and Q1 2020. The goal is to compare usage patterns between casual riders and annual members and identify factors associated with subscription behavior.
 The project was completed as a practice case study for the Google Data Analytics Professional Certificate.
