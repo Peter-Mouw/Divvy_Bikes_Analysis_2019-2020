@@ -1,5 +1,6 @@
 Divvy Bikes Analysis (2019–2020)
 Published report:
+
 https://peter-mouw.github.io/Divvy_Bikes_Analysis_2019-2020/
  
 Overview
